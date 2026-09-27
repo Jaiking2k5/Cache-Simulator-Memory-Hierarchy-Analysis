@@ -1,0 +1,219 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <cstdint>
+#include <iomanip>
+#include <algorithm>
+
+using namespace std;
+
+struct CacheLine {
+    bool valid = false;
+    uint64_t tag = 0;
+    uint64_t lastUsed = 0;
+};
+
+class Cache {
+private:
+    int cacheSize;
+    int blockSize;
+    int associativity;
+    int numberOfSets;
+
+    vector<vector<CacheLine>> sets;
+
+    uint64_t accessCount = 0;
+    int hits = 0;
+    int misses = 0;
+
+public:
+    Cache(int cacheSize, int blockSize, int associativity)
+        : cacheSize(cacheSize),
+          blockSize(blockSize),
+          associativity(associativity) {
+
+        int numberOfBlocks = cacheSize / blockSize;
+        numberOfSets = numberOfBlocks / associativity;
+
+        sets.resize(numberOfSets,
+                    vector<CacheLine>(associativity));
+    }
+
+    bool access(uint64_t address) {
+
+        accessCount++;
+
+        // Find the memory block
+        uint64_t blockNumber = address / blockSize;
+
+        // Find cache set
+        int setIndex = blockNumber % numberOfSets;
+
+        // Find tag
+        uint64_t tag = blockNumber / numberOfSets;
+
+        // Search for a hit
+        for (auto &line : sets[setIndex]) {
+
+            if (line.valid && line.tag == tag) {
+
+                hits++;
+                line.lastUsed = accessCount;
+
+                return true;
+            }
+        }
+
+        // Cache miss
+        misses++;
+
+        // Find an empty line
+        for (auto &line : sets[setIndex]) {
+
+            if (!line.valid) {
+
+                line.valid = true;
+                line.tag = tag;
+                line.lastUsed = accessCount;
+
+                return false;
+            }
+        }
+
+        // No empty line -> LRU replacement
+        auto lruLine = min_element(
+            sets[setIndex].begin(),
+            sets[setIndex].end(),
+            [](const CacheLine &a, const CacheLine &b) {
+                return a.lastUsed < b.lastUsed;
+            }
+        );
+
+        lruLine->tag = tag;
+        lruLine->lastUsed = accessCount;
+
+        return false;
+    }
+
+    void printStatistics() {
+
+        int totalAccesses = hits + misses;
+
+        double hitRate =
+            (double)hits / totalAccesses * 100.0;
+
+        double missRate =
+            (double)misses / totalAccesses * 100.0;
+
+        cout << "\n========== Cache Statistics ==========\n";
+
+        cout << "Cache Size      : "
+             << cacheSize << " bytes\n";
+
+        cout << "Block Size      : "
+             << blockSize << " bytes\n";
+
+        cout << "Associativity   : "
+             << associativity << "-way\n";
+
+        cout << "Number of Sets  : "
+             << numberOfSets << "\n";
+
+        cout << "--------------------------------------\n";
+
+        cout << "Total Accesses  : "
+             << totalAccesses << "\n";
+
+        cout << "Hits            : "
+             << hits << "\n";
+
+        cout << "Misses          : "
+             << misses << "\n";
+
+        cout << fixed << setprecision(2);
+
+        cout << "Hit Rate        : "
+             << hitRate << "%\n";
+
+        cout << "Miss Rate       : "
+             << missRate << "%\n";
+
+        cout << "======================================\n";
+    }
+};
+
+
+int main() {
+
+    // ---------------------------------
+    // Cache configuration
+    // ---------------------------------
+
+    int cacheSize = 1024;       // 1 KB
+    int blockSize = 16;         // 16 bytes
+    int associativity = 2;      // 2-way
+
+    Cache cache(
+        cacheSize,
+        blockSize,
+        associativity
+    );
+
+    // ---------------------------------
+    // Memory access trace
+    // ---------------------------------
+
+    vector<uint64_t> addresses = {
+
+        0x00000000,
+        0x00000004,
+        0x00000008,
+        0x0000000C,
+
+        0x00000040,
+        0x00000044,
+
+        0x00000000,
+        0x00000004,
+
+        0x00000100,
+        0x00000104,
+
+        0x00000040,
+        0x00000000
+    };
+
+
+    // ---------------------------------
+    // Simulate memory accesses
+    // ---------------------------------
+
+    cout << "Cache Simulation\n";
+    cout << "----------------\n";
+
+    for (uint64_t address : addresses) {
+
+        bool hit = cache.access(address);
+
+        cout << "Address 0x"
+             << hex
+             << setw(8)
+             << setfill('0')
+             << address
+             << dec;
+
+        if (hit)
+            cout << " -> HIT\n";
+        else
+            cout << " -> MISS\n";
+    }
+
+
+    // ---------------------------------
+    // Print final statistics
+    // ---------------------------------
+
+    cache.printStatistics();
+
+    return 0;
+}
